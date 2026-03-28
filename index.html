@@ -1,0 +1,374 @@
+<!DOCTYPE html>
+<html lang="it">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Aria Travel AI</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+    
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    fontFamily: { sans: ['Inter', 'sans-serif'] },
+                    colors: {
+                        'aria-light': '#E8E9F3', 'aria-border': '#CECECE',
+                        'aria-muted': '#A6A6A8', 'aria-dark': '#272635',
+                        'aria-accent': '#B1E5F2',
+                    }
+                }
+            }
+        }
+    </script>
+
+    <style>
+        body { background-color: #E8E9F3; overflow: hidden; }
+        
+        .aria-bg {
+            position: fixed; top: 0; left: 0; width: 100%; height: 100%; z-index: -1; pointer-events: none;
+            background: linear-gradient(135deg, #E8E9F3 20%, #B1E5F2 40%, #CECECE 60%, #E8E9F3 80%);
+            background-size: 400% 400%;
+            /* SOLUZIONE 1: Animazione media, né troppo veloce né troppo lenta (8 secondi) */
+            animation: gradientMove 8s ease infinite; 
+            opacity: 0.8; /* Aumentato leggermente l'impatto visivo */
+        }
+        @keyframes gradientMove { 0% { background-position: 0% 50%; } 50% { background-position: 100% 50%; } 100% { background-position: 0% 50%; } }
+        
+        .app-container { background: #ffffff; border-radius: 1.5rem; box-shadow: 0 25px 50px -12px rgba(39, 38, 53, 0.3); }
+        .glass-overlay { background: rgba(39, 38, 53, 0.7); backdrop-filter: blur(8px); } 
+
+        .bot-message strong { color: #272635; font-weight: 700; }
+        .bot-message { line-height: 1.6; }
+        .bot-message br { display: block; content: ""; margin-top: 0.5rem; }
+        
+        .trip-card-image { transition: transform 0.5s ease; }
+        .trip-card-container:hover .trip-card-image { transform: scale(1.05); }
+        .edit-icon { opacity: 0; transition: opacity 0.2s ease; }
+        .trip-card-container:hover .edit-icon { opacity: 1; }
+        
+        ::-webkit-scrollbar { width: 8px; }
+        ::-webkit-scrollbar-track { background: transparent; }
+        ::-webkit-scrollbar-thumb { background: #CECECE; border-radius: 10px; }
+        ::-webkit-scrollbar-thumb:hover { background: #A6A6A8; }
+    </style>
+</head>
+<body class="h-screen w-screen p-4 md:p-10 flex items-center justify-center relative">
+
+    <div id="login-overlay" class="absolute inset-0 glass-overlay z-50 flex items-center justify-center transition-opacity duration-500">
+        <div class="bg-white p-10 rounded-[2rem] shadow-2xl max-w-sm w-full text-center">
+            <div class="text-4xl mb-4 text-aria-dark">✈️</div>
+            <h2 id="auth-title" class="text-2xl font-bold text-aria-dark mb-2 tracking-tight">Accedi ad Aria</h2>
+            <p id="auth-subtitle" class="text-aria-muted mb-6 text-sm">Il tuo assistente di viaggio</p>
+            
+            <input type="text" id="username-input" placeholder="Username" class="w-full mb-4 p-4 bg-aria-light rounded-xl border border-aria-border focus:ring-2 focus:ring-aria-accent outline-none transition text-aria-dark">
+            <input type="email" id="email-input" placeholder="La tua Email" class="w-full mb-4 p-4 bg-aria-light rounded-xl border border-aria-border focus:ring-2 focus:ring-aria-accent outline-none transition hidden text-aria-dark">
+            <input type="password" id="password-input" placeholder="Password (es. Viaggio1)" class="w-full mb-6 p-4 bg-aria-light rounded-xl border border-aria-border focus:ring-2 focus:ring-aria-accent outline-none transition text-aria-dark">
+            
+            <p id="login-error" class="text-red-500 text-sm mb-4 hidden font-medium"></p>
+
+            <button onclick="eseguiAuth()" id="btn-main" class="w-full bg-aria-dark text-white font-semibold py-4 rounded-xl mb-3 hover:opacity-90 transition shadow-lg tracking-wide">Accedi</button>
+            <button onclick="cambiaModalitaAuth()" id="btn-toggle" class="w-full bg-white text-aria-dark border border-aria-border font-semibold py-4 rounded-xl hover:bg-aria-light transition">Sei nuovo? Registrati</button>
+        </div>
+    </div>
+
+    <div class="aria-bg"></div>
+
+    <div class="app-container w-full max-w-[1400px] h-full max-h-[900px] flex flex-col md:flex-row overflow-hidden border border-aria-border">
+        
+        <div class="hidden md:flex w-[320px] bg-aria-light border-r border-aria-border flex-col p-6">
+            <h2 class="text-xl font-bold text-aria-dark mb-1 flex items-center gap-2 tracking-tight">
+                <span class="text-aria-dark">✦</span> Aria
+            </h2>
+            <p id="user-greeting" class="text-sm text-aria-muted mb-8 font-medium">I Miei Viaggi</p>
+            
+            <div id="my-trips-list" class="space-y-4 flex-1 overflow-y-auto pr-2"></div>
+
+            <button onclick="resetApp()" class="mt-6 bg-white border border-aria-border text-aria-dark py-3 rounded-xl font-semibold hover:bg-aria-accent hover:border-aria-accent transition shadow-sm flex justify-center items-center gap-2">
+                <span class="text-xl leading-none">+</span> Nuova Chat
+            </button>
+        </div>
+
+        <div class="flex-1 flex flex-col relative bg-white">
+            <div class="h-16 border-b border-aria-border flex items-center px-8 bg-white/90 backdrop-blur-sm sticky top-0 z-10">
+                <h3 id="chat-header-title" class="font-bold text-aria-dark tracking-tight">Nuova Conversazione</h3>
+            </div>
+
+            <div id="chat-box" class="flex-1 overflow-y-auto p-8 flex flex-col space-y-6"></div>
+
+            <div class="p-6 md:p-8 bg-white border-t border-aria-border">
+                <div class="flex flex-wrap gap-2 mb-4">
+                    <button onclick="setQuickAction('📅 Crea un itinerario di 4 giorni per')" class="bg-aria-light border border-aria-border px-4 py-2 rounded-lg text-sm font-medium text-aria-dark hover:bg-aria-accent transition">📅 Itinerario</button>
+                    <button onclick="setQuickAction('✈️ Trova voli per')" class="bg-aria-light border border-aria-border px-4 py-2 rounded-lg text-sm font-medium text-aria-dark hover:bg-aria-accent transition">✈️ Voli</button>
+                    <button onclick="setQuickAction('🏨 Suggerisci hotel a')" class="bg-aria-light border border-aria-border px-4 py-2 rounded-lg text-sm font-medium text-aria-dark hover:bg-aria-accent transition">🏨 Hotel</button>
+                    <button onclick="setQuickAction('💰 Calcola un budget stimato per')" class="bg-aria-light border border-aria-border px-4 py-2 rounded-lg text-sm font-medium text-aria-dark hover:bg-aria-accent transition">💰 Budget</button>
+                </div>
+
+                <div class="flex relative">
+                    <input type="text" id="user-input" class="w-full bg-aria-light border border-aria-border rounded-2xl py-4 pl-6 pr-24 focus:ring-2 focus:ring-aria-accent outline-none transition text-aria-dark placeholder-aria-muted" placeholder="Chiedi ad Aria...">
+                    <button onclick="gestisciInvio()" class="absolute right-2 top-2 bottom-2 bg-aria-dark hover:opacity-90 text-white rounded-xl px-6 flex items-center justify-center transition font-semibold">Invia</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // --- INSERISCI QUI LA TUA API KEY ---
+        const API_KEY = 'inserire api key'; 
+        const GOOGLE_API_URL = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${API_KEY}`;
+
+        let currentUser = null; 
+        let currentChatDestination = null;
+        let authMode = 'login'; 
+        let chatMemory = [];
+
+        // RISOLTO IL PROBLEMA FOTO: Logica robusta con 10 nuove città
+        function getImageUrl(cityName) {
+            // Pulizia aggressiva: via tutti i punti, asterischi e spazi extra.
+            let cleanCity = cityName.split('.')[0].split(',')[0].replace(/[.,!?*]/g, '').trim().toLowerCase();
+            
+            // Gestione degli errori di battitura comuni o nomi doppi
+            if (cleanCity === "madird") cleanCity = "madrid";
+            if (cleanCity === "newyork") cleanCity = "new york";
+            if (cleanCity === "sidney") cleanCity = "sydney";
+
+            const staticImages = {
+                // Top 7 originali
+                "roma": "https://images.unsplash.com/photo-1552832230-c0197dd311b5?q=80&w=600&auto=format&fit=crop",
+                "parigi": "https://images.unsplash.com/photo-1502602898657-3e91760cbb34?q=80&w=600&auto=format&fit=crop",
+                "bali": "https://images.unsplash.com/photo-1537996194471-e657df975ab4?q=80&w=600&auto=format&fit=crop",
+                "londra": "https://images.unsplash.com/photo-1513635269975-59663e0ac1ad?q=80&w=600&auto=format&fit=crop",
+                "barcellona": "https://images.unsplash.com/photo-1583422409516-2895a77efded?q=80&w=600&auto=format&fit=crop",
+                "milano": "https://images.unsplash.com/photo-1520106212299-d99c443e4568?q=80&w=600&auto=format&fit=crop",
+                "new york": "https://images.unsplash.com/photo-1496442226666-8d4d0e62e6e9?q=80&w=600&auto=format&fit=crop",
+                
+                // CITTÀ SISTEMATE + PALERMO
+                "venezia": "https://images.unsplash.com/photo-1514890547357-a9ee288728e0?q=80&w=600&auto=format&fit=crop",
+                "firenze": "https://images.unsplash.com/photo-1528114039593-4366cc08227d?q=80&w=600&auto=format&fit=crop",
+                "amsterdam": "https://images.unsplash.com/photo-1512470876302-972faa2aa9a4?q=80&w=600&auto=format&fit=crop",
+                "berlino": "https://images.unsplash.com/photo-1528728329032-2972f65dfb3f?q=80&w=600&auto=format&fit=crop",
+                "madrid": "https://images.unsplash.com/photo-1539037116277-4db20889f2d4?q=80&w=600&auto=format&fit=crop",
+                "lisbona": "https://images.unsplash.com/photo-1508683515822-261ce385b0d0?q=80&w=600&auto=format&fit=crop",
+                "praga": "https://images.unsplash.com/photo-1519677100203-a0e668c92439?q=80&w=600&auto=format&fit=crop",
+                "vienna": "https://images.unsplash.com/photo-1516550893923-42d28e5677af?q=80&w=600&auto=format&fit=crop",
+                "sydney": "https://images.unsplash.com/photo-1506973035872-a4ec16b8e8d9?q=80&w=600&auto=format&fit=crop"
+            };
+
+            if (staticImages[cleanCity]) return staticImages[cleanCity];
+
+            // Foto di default per tutte le altre destinazioni (Es. Gangi)
+            return "https://images.unsplash.com/photo-1488646953014-85cb44e25828?q=80&w=600&auto=format&fit=crop";
+        }
+
+        // --- GESTIONE AUTH E CHAT (Preservata) ---
+        function cambiaModalitaAuth() {
+            authMode = authMode === 'login' ? 'registrati' : 'login';
+            document.getElementById('email-input').classList.toggle('hidden');
+            document.getElementById('auth-title').innerText = authMode === 'registrati' ? "Crea un Account" : "Accedi ad Aria";
+            document.getElementById('btn-main').innerText = authMode === 'registrati' ? "Registrati" : "Accedi";
+            document.getElementById('btn-toggle').innerText = authMode === 'registrati' ? "Hai già un account? Accedi" : "Sei nuovo? Registrati";
+        }
+
+        async function eseguiAuth() {
+            const user = document.getElementById('username-input').value.trim();
+            const pass = document.getElementById('password-input').value.trim();
+            const email = document.getElementById('email-input').value.trim();
+            const errorEl = document.getElementById('login-error');
+
+            const bodyData = { username: user, password: pass };
+            if (authMode === 'registrati') bodyData.email = email;
+
+            try {
+                const response = await fetch(`/api/${authMode}`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(bodyData) });
+                const data = await response.json();
+                if (response.ok) {
+                    currentUser = user;
+                    document.getElementById('login-overlay').style.display = 'none'; 
+                    document.getElementById('user-greeting').innerText = `I Miei Viaggi • ${user}`;
+                    caricaViaggiDalDatabase();
+                    resetApp();
+                } else {
+                    errorEl.innerText = data.detail;
+                    errorEl.classList.remove('hidden');
+                }
+            } catch (e) { errorEl.innerText = "Errore di connessione."; errorEl.classList.remove('hidden'); }
+        }
+
+        async function caricaViaggiDalDatabase() {
+            if (!currentUser) return;
+            const listContainer = document.getElementById('my-trips-list');
+            listContainer.innerHTML = ''; 
+
+            const response = await fetch(`/api/miei_viaggi/${currentUser}`);
+            const data = await response.json();
+
+            if (data.viaggi && data.viaggi.length > 0) {
+                data.viaggi.reverse().forEach(meta => listContainer.innerHTML += creaCodiceCartaViaggio(meta));
+            } else {
+                listContainer.innerHTML = `<p class="text-sm text-aria-muted p-4">Nessun viaggio salvato. Inizia una chat!</p>`;
+            }
+        }
+
+        function creaCodiceCartaViaggio(meta) {
+            const imageUrl = getImageUrl(meta);
+            return `
+                <div class="relative rounded-2xl overflow-hidden shadow-sm h-36 group cursor-pointer border border-aria-border hover:shadow-md transition-all duration-300 trip-card-container mb-4">
+                    <img src="${imageUrl}" class="w-full h-full object-cover trip-card-image" onclick="apriChatViaggio('${meta}')">
+                    <div class="absolute inset-0 bg-gradient-to-t from-aria-dark/90 via-aria-dark/20 to-transparent pointer-events-none"></div>
+                    <div class="absolute bottom-0 left-0 p-4 w-full flex justify-between items-end">
+                        <h3 class="text-white font-bold text-lg leading-tight w-2/3 truncate" onclick="apriChatViaggio('${meta}')">${meta}</h3>
+                        <div class="flex gap-1.5 opacity-0 group-hover:opacity-100 transition-opacity duration-200">
+                            <button class="text-white p-1.5 rounded-lg bg-white/20 hover:bg-white/40 backdrop-blur-md transition flex items-center justify-center" onclick="iniziaRinominaViaggio('${meta}'); event.stopPropagation();" title="Rinomina">✎</button>
+                            <button class="text-white p-1.5 rounded-lg bg-red-500/60 hover:bg-red-500 backdrop-blur-md transition flex items-center justify-center" onclick="eliminaViaggio('${meta}'); event.stopPropagation();" title="Elimina">🗑️</button>
+                        </div>
+                    </div>
+                </div>`;
+        }
+
+        async function eliminaViaggio(meta) {
+            if (confirm(`Sei sicuro di voler eliminare definitivamente il viaggio per ${meta}?`)) {
+                try {
+                    const response = await fetch('/api/elimina_viaggio', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ username: currentUser, destinazione: meta }) });
+                    if (response.ok) {
+                        if (currentChatDestination === meta) resetApp();
+                        caricaViaggiDalDatabase();
+                    } else { alert("Errore durante l'eliminazione."); }
+                } catch (e) { alert("Errore di rete."); }
+            }
+        }
+
+        function iniziaRinominaViaggio(vecchioNome) {
+            const nuovoNome = prompt(`Rinomina il viaggio "${vecchioNome}":\n(Scrivi qualsiasi città del mondo per ottenere una foto!)`, vecchioNome);
+            if (nuovoNome && nuovoNome.trim() !== "" && nuovoNome !== vecchioNome) {
+                confermaRinominaViaggio(vecchioNome, nuovoNome.trim());
+            }
+        }
+
+        async function confermaRinominaViaggio(vecchioNome, nuovoNome) {
+            try {
+                const response = await fetch('/api/rinomina_viaggio', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ username: currentUser, vecchio_nome: vecchioNome, nuovo_nome: nuovoNome }) });
+                if (response.ok) {
+                    if (currentChatDestination === vecchioNome) { currentChatDestination = nuovoNome; document.getElementById('chat-header-title').innerText = nuovoNome; }
+                    await caricaViaggiDalDatabase(); 
+                } else { alert("Errore nella rinomina"); }
+            } catch (error) { alert("Errore tecnico"); }
+        }
+
+        async function apriChatViaggio(meta) {
+            currentChatDestination = meta;
+            document.getElementById('chat-header-title').innerText = meta;
+            const chatBox = document.getElementById('chat-box');
+            chatBox.innerHTML = ''; 
+            chatMemory = []; 
+            const response = await fetch(`/api/cronologia_chat/${currentUser}/${meta}`);
+            const data = await response.json();
+            if (data.messaggi.length === 0) {
+                aggiungiMessaggioUI("bot", `Ecco il tuo progetto per ${meta}. Come posso aiutarti?`);
+            } else { 
+                data.messaggi.forEach(msg => {
+                    aggiungiMessaggioUI(msg.mittente, msg.testo, false);
+                    const ruoloAPI = msg.mittente === "utente" ? "user" : "model";
+                    chatMemory.push({ role: ruoloAPI, parts: [{ text: msg.testo }] });
+                }); 
+                chatBox.scrollTop = chatBox.scrollHeight;
+            }
+        }
+
+        async function salvaViaggioNelDatabase(meta) {
+            if(!currentUser) return;
+            await fetch('/api/salva_viaggio', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ username: currentUser, destinazione: meta }) });
+            caricaViaggiDalDatabase();
+        }
+
+        async function salvaMessaggioSingolo(mittente, testo) {
+            if(!currentUser || !currentChatDestination) return;
+            await fetch('/api/salva_messaggio', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ username: currentUser, destinazione: currentChatDestination, mittente: mittente, testo: testo }) });
+        }
+
+        function resetApp() {
+            document.getElementById('chat-box').innerHTML = '';
+            document.getElementById('chat-header-title').innerText = "Nuova Conversazione";
+            currentChatDestination = null;
+            chatMemory = []; 
+            caricaViaggiDalDatabase(); 
+            aggiungiMessaggioUI("bot", "✦ Aria è pronta. Qual è la tua prossima meta?");
+        }
+
+        function setQuickAction(text) { document.getElementById('user-input').value = text + " "; document.getElementById('user-input').focus(); }
+
+        // INVIO E AI CON XML TAGS (Mantenuto, ora foto stabile)
+        async function gestisciInvio() {
+            const inputField = document.getElementById('user-input');
+            const testoUtente = inputField.value.trim();
+            if (!testoUtente) return; 
+
+            aggiungiMessaggioUI("utente", testoUtente);
+            salvaMessaggioSingolo("utente", testoUtente);
+            
+            chatMemory.push({ role: "user", parts: [{ text: testoUtente }] });
+            inputField.value = ''; 
+
+            const chatBox = document.getElementById('chat-box');
+            const idLoad = "load-" + Date.now();
+            chatBox.innerHTML += `<div id="${idLoad}" class="flex items-end mt-4"><div class="w-8 h-8 rounded-full bg-aria-light flex items-center justify-center mr-3 text-aria-dark font-bold text-xs shadow-sm">A</div><div class="bg-white p-4 rounded-2xl rounded-bl-sm border border-aria-border text-aria-muted italic flex items-center text-sm shadow-sm"><div class="w-4 h-4 border-2 border-aria-dark border-t-transparent rounded-full animate-spin mr-3"></div> Aria sta riflettendo...</div></div>`;
+            chatBox.scrollTop = chatBox.scrollHeight;
+
+            let memoriaDaInviare = JSON.parse(JSON.stringify(chatMemory));
+            let ultimoIndice = memoriaDaInviare.length - 1;
+
+            if (!currentChatDestination) {
+                memoriaDaInviare[ultimoIndice].parts[0].text = 
+                    "Se l'utente specifica una destinazione, estrai SOLO il nome della città e scrivi come prima cosa assoluta il tag: <META>NomeCittà</META>. Non inserire nessuna punteggiatura dentro il tag. Poi vai a capo due volte e scrivi la tua risposta amichevole. Se non c'è destinazione, scrivi <META>Nessuna</META>. Richiesta utente: " + testoUtente;
+            } else {
+                memoriaDaInviare[ultimoIndice].parts[0].text = 
+                    "Siamo nel bel mezzo di una conversazione. NON salutare e NON presentarti. Rispondi in modo diretto e utile a questa richiesta: " + testoUtente;
+            }
+
+            try {
+                const response = await fetch(GOOGLE_API_URL, { 
+                    method: 'POST', 
+                    headers: { 'Content-Type': 'application/json' }, 
+                    body: JSON.stringify({ "contents": memoriaDaInviare }) 
+                });
+                
+                const data = await response.json();
+                document.getElementById(idLoad).remove();
+                
+                if (data.error) { aggiungiMessaggioUI("bot", "Errore: " + data.error.message); return; }
+                
+                let rispostaGrezza = data.candidates[0].content.parts[0].text;
+                let rispostaPura = rispostaGrezza;
+
+                if (!currentChatDestination && rispostaGrezza.includes("<META>")) {
+                    const match = rispostaGrezza.match(/<META>(.*?)<\/META>/);
+                    if (match && match[1] && match[1].trim() !== "Nessuna") {
+                        // Puliamo solo gli asterischi se l'AI ce li mette
+                        currentChatDestination = match[1].replace(/[*]/g, '').trim(); 
+                        document.getElementById('chat-header-title').innerText = currentChatDestination;
+                        await salvaViaggioNelDatabase(currentChatDestination);
+                        salvaMessaggioSingolo("utente", testoUtente); 
+                    }
+                    rispostaPura = rispostaGrezza.replace(/<META>.*?<\/META>/g, "").trim();
+                }
+                
+                const testoBotFormattato = rispostaPura.replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>').replace(/\n/g, '<br>');
+                aggiungiMessaggioUI("bot", testoBotFormattato);
+                salvaMessaggioSingolo("bot", testoBotFormattato);
+                chatMemory.push({ role: "model", parts: [{ text: rispostaPura }] });
+
+            } catch (error) { document.getElementById(idLoad).remove(); aggiungiMessaggioUI("bot", "Errore tecnico."); }
+        }
+
+        function aggiungiMessaggioUI(mittente, testo, scorri = true) {
+            const chatBox = document.getElementById('chat-box');
+            const html = mittente === "utente" 
+                ? `<div class="flex justify-end mt-4"><div class="bg-aria-dark text-white font-medium border border-aria-dark p-4 px-5 rounded-2xl rounded-tr-none max-w-[75%] shadow-md text-sm leading-relaxed">${testo}</div></div>`
+                : `<div class="flex items-end mt-4"><div class="w-8 h-8 rounded-full bg-aria-light flex items-center justify-center mr-3 text-aria-dark font-bold text-xs shadow-sm flex-shrink-0 border border-aria-border mb-1">A</div><div class="bg-white p-4 px-5 rounded-2xl rounded-tl-none text-aria-dark max-w-[85%] border border-aria-border bot-message shadow-md text-sm leading-relaxed">${testo}</div></div>`;
+            chatBox.innerHTML += html;
+            if(scorri) chatBox.scrollTop = chatBox.scrollHeight;
+        }
+
+        document.getElementById('user-input').addEventListener('keypress', function (e) { if (e.key === 'Enter') gestisciInvio(); });
+    </script>
+</body>
+</html>
